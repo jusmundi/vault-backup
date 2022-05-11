@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- toc -->
 
-  * [Size 🌈](#size-%F0%9F%8C%88)
+* [Size 🌈](#size-%F0%9F%8C%88)
 - [[Unreleased]](#unreleased)
 - [[0.0.2] - TODO](#002---todo)
 - [[0.0.1] - 2022-11-05](#001---2022-11-05)
