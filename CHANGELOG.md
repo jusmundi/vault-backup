@@ -58,4 +58,13 @@ docker push ${DOCKER_ORGANISATION}/vault-backup:0.0.1
 
 `docker run -it -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -v /var/run/docker.sock:/var/run/docker.sock --entrypoint /bin/bash ${DOCKER_ORGANISATION}/vault-backup:0.0.1`
 
+```bash
+export VAULT_ADDR=${VAULT_ADDR:-"http://vault:8200"}
+export ROLE_ID=${ROLE_ID:-"1234"}
+export SECRET_ID=${SECRET_ID:-"1234"}
+export VAULT_PREFIX=${VAULT_PREFIX:-"gitlab"}
+export ENCRYPTION_KEY="XXX"
+docker run --network=host --env VAULT_ADDR="${VAULT_ADDR}" --env ROLE_ID="${ROLE_ID}" --env SECRET_ID="${SECRET_ID}" --env VAULT_PREFIX="${VAULT_PREFIX}" --env ENCRYPTION_KEY="${ENCRYPTION_KEY}" --name test-vault-backup --rm jusmundi/vault-backup:latest print
+```
+
 <!-- markdown-link-check-enable -->
