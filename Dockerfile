@@ -25,4 +25,4 @@ ENTRYPOINT [ "python", "./vault_handler.py" ]
 HEALTHCHECK NONE
 
 # dockerfile_lint - ignore
-EXPOSE 8200
+EXPOSE 80
