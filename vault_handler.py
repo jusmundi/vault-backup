@@ -13,13 +13,16 @@
 #
 # Copyright (c) 2021 Igor Zhivilo <igor.zhivilo@gmail.com>
 # Licensed under the MIT License
+import binascii
 import json
 import logging
 import os
 import sys
+import traceback
 
 import click
 import hvac
+import six
 from colorama import init
 from cryptography.fernet import Fernet
 from termcolor import colored
@@ -32,7 +35,50 @@ ROLE_ID = os.environ.get('ROLE_ID')
 SECRET_ID = os.environ.get('SECRET_ID')
 VAULT_PREFIX = os.environ.get('VAULT_PREFIX')
 ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
-# DEBUG = os.environ.get('DEBUG')
+
+_FERNET_KEY = 'fernet'
+
+_CACHE = {}
+
+
+class FatalError(RuntimeError):
+    pass
+
+
+def get_fernet(enc_key, debug):
+    """Return a fernet object. Object is encoded on module level.
+
+    Fernet object gets a long time to create so we are creating it only once
+    per runtime.
+
+    """
+    if _FERNET_KEY not in _CACHE:
+        try:
+            key = six.b(enc_key)
+            if not key:
+                # same error if key is not hexedecimal.
+                # that way 2 errors will be handled in same place.
+                raise binascii.Error
+            _CACHE[_FERNET_KEY] = Fernet(key)
+        except binascii.Error as e:  # noqa: ignore=E722
+            if debug:
+                traceback.print_exc()
+            print(
+                colored(
+                    'ENCRYPTION_KEY must be a '
+                    'hexedecimal value. Here is one that '
+                    'is randomly generated for you ;) '
+                    '{}'.format(Fernet.generate_key()), 'red',
+                ),
+            )
+            raise FatalError(
+                'ENCRYPTION_KEY must be a '
+                'hexedecimal value. Here is one that '
+                'is randomly generated for you ;) '
+                '{}'.format(Fernet.generate_key()),
+            )
+
+    return _CACHE[_FERNET_KEY]
 
 
 class VaultHandler:
@@ -98,7 +144,7 @@ class VaultHandler:
     def _encrypt_dump(self, secrets_dict, dump_path):
         secrets_dict_byte = json.dumps(secrets_dict).encode('utf-8')
         if self.encrypt:
-            f = Fernet(self.enc_key)
+            f = get_fernet(self.enc_key, self.debug)
             encrypted_data = f.encrypt(secrets_dict_byte)
         else:
             encrypted_data = secrets_dict_byte
@@ -109,7 +155,7 @@ class VaultHandler:
         with open(path_to_dump, 'rb') as file:
             file_data = file.read()
         if self.encrypt:
-            f = Fernet(self.enc_key)
+            f = get_fernet(self.enc_key, self.debug)
             decrypted_data = f.decrypt(file_data).decode('utf-8')
         else:
             decrypted_data = file_data
@@ -136,7 +182,6 @@ class VaultHandler:
 @click.group(invoke_without_command=True)
 @click.option('--debug/--no-debug', default=False)
 @click.option('--encrypt/--no-encrypt', default=False, help='Encrypt data')  # noqa: ignore=E501
-# @click.option('-e', '--encrypt', is_flag=True, default=True, help='Encrypt data')
 @click.pass_context
 def cli(ctx, debug=False, encrypt=True):
     group_commands = ['print', 'print-dump', 'dump', 'populate']
@@ -154,28 +199,37 @@ def cli(ctx, debug=False, encrypt=True):
     if debug:
         logger.setLevel(logging.DEBUG)
         logger.info('Collecting vault data')
-        click.echo('Debug mode is %s' % ('on' if debug else 'off'))
-        click.echo('Encrypt is %s' % (ctx.obj['ENCRYPT'] and 'on' or 'off'))
+        click.echo(colored('Debug mode is %s' % ('on' if debug else 'off'), 'yellow'))
+        click.echo(colored('Encryption is %s' % (ctx.obj['ENCRYPT'] and 'on' or 'off'), 'yellow'))
+        print(
+            colored(
+                'Context ENCRYPT is : {}'.format(
+                    ctx.obj['ENCRYPT'],
+                ), 'yellow',
+            ),
+        )
 
     if ctx.invoked_subcommand is None:
-        click.echo('Specify one of the commands below')
+        click.echo(colored('Specify one of the commands below', 'red'))
         print(*group_commands, sep='\n')
 
 
 @cli.command('print')
 @click.option('--debug/--no-debug', default=False)
 @click.pass_context
-def print_secrets(ctx, debug=False):
+def print_secrets(ctx, debug=False, encrypt=False):
     """
     Print secrets nicely.
     """
     if debug:
         logger.info('Printing vault data')
+        click.echo(colored('Debug mode is %s' % ('on' if debug else 'off'), 'yellow'))
+        click.echo(colored('Encryption is %s' % (ctx.obj['ENCRYPT'] and 'on' or 'off'), 'yellow'))
 
     vault = VaultHandler(
         VAULT_ADDR, ROLE_ID, SECRET_ID,
         VAULT_PREFIX, ENCRYPTION_KEY,
-        ctx.obj['DEBUG'], ctx.obj['ENCRYPT'],
+        debug, encrypt,
     )
     vault.print_secrets_nicely()
 
@@ -197,12 +251,14 @@ def print_dump(ctx, dump_path, debug=False, encrypt=True):
 
     if debug:
         logger.info('Dump data from encrypted dump')
-        click.echo(encrypt)
+        click.echo(colored('Debug mode is %s' % ('on' if debug else 'off'), 'yellow'))
+        click.echo(colored('Encryption is %s' % (ctx.obj['ENCRYPT'] and 'on' or 'off'), 'yellow'))
+        click.echo(colored('Dump path is {}.'.format(dump_path), 'yellow'))
 
     vault = VaultHandler(
         VAULT_ADDR, ROLE_ID, SECRET_ID,
         VAULT_PREFIX, ENCRYPTION_KEY,
-        ctx.obj['DEBUG'], ctx.obj['ENCRYPT'],
+        debug, encrypt,
     )
     vault.print_secrets_from_encrypted_dump(dump_path)
 
@@ -224,12 +280,15 @@ def dump_secrets(ctx, dump_path, debug=False, encrypt=True):
 
     if debug:
         logger.info('Dump vault data')
-        click.echo(encrypt)
+        click.echo(colored('Debug mode is %s' % ('on' if debug else 'off'), 'yellow'))
+        click.echo(colored('Encryption is %s' % (ctx.obj['ENCRYPT'] and 'on' or 'off'), 'yellow'))
+        # logger.info('ENCRYPT : {}'.format(ctx.obj['ENCRYPT']))
+        click.echo(colored('Dump path is {}.'.format(dump_path), 'yellow'))
 
     vault = VaultHandler(
         VAULT_ADDR, ROLE_ID, SECRET_ID,
         VAULT_PREFIX, ENCRYPTION_KEY,
-        ctx.obj['DEBUG'], ctx.obj['ENCRYPT'],
+        debug, encrypt,
     )
     vault.dump_all_secrets(dump_path)
 
@@ -258,15 +317,16 @@ def populate_vault_prefix(ctx, vault_prefix, dump_path, debug=False, encrypt=Tru
 
     if debug:
         logger.info('Populating vault with data')
-        click.echo(encrypt)
+        click.echo(colored('Debug mode is %s' % ('on' if debug else 'off'), 'yellow'))
+        click.echo(colored('Encryption is %s' % (ctx.obj['ENCRYPT'] and 'on' or 'off'), 'yellow'))
         # click.echo(click.format_filename(commit_msg_filepath))
-        click.echo(vault_prefix)
-        click.echo(dump_path)
+        click.echo(colored('Vault prefix is {}.'.format(vault_prefix), 'yellow'))
+        click.echo(colored('Dump path is {}.'.format(dump_path), 'yellow'))
 
     vault = VaultHandler(
         VAULT_ADDR, ROLE_ID, SECRET_ID,
         VAULT_PREFIX, ENCRYPTION_KEY,
-        ctx.obj['DEBUG'], ctx.obj['ENCRYPT'],
+        debug, encrypt,
     )
     vault.populate_vault_from_dump(vault_prefix, dump_path)
 
