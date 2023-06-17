@@ -14,6 +14,8 @@ RUN pip install -r requirements.txt
 
 COPY vault_handler.py ./
 
+WORKDIR /tmp
+
 CMD [ "python", "./vault_handler.py" ]
 HEALTHCHECK NONE
 
