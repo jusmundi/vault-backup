@@ -1,4 +1,8 @@
-click==8.0.1
-cryptography==3.4.8
-hvac==0.11.0
-PyYAML==5.4.1
+click>=8.0.1
+click-completion>=0.5.2
+colorama>=0.4.3
+cryptography>=3.4.8
+hvac>=0.11.2
+PyYAML>=5.4.1
+six>=1.14.0
+termcolor>=1.1.0
